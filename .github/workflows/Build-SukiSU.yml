@@ -1,31 +1,31 @@
-name: Build OnePlus12
+name: Build OnePlus_ace2Pro
 on:
   workflow_dispatch:
     inputs:
       CPU:
         description: "分支"
         required: true
-        default: 'sm8650'
+        default: 'sm8550'
       FEIL:
         description: "配置文件"
         required: true
-        default: 'oneplus12_v'
+        default: 'oneplus_ace2pro_v'
       CPUD:
         description: "处理器代号"
         required: true
-        default: 'pineapple'
+        default: 'kalama'
       ANDROID_VERSION:
         description: "内核安卓版本"
         required: true
-        default: 'android14'
+        default: 'android13'
       KERNEL_VERSION:
         description: "内核版本"
         required: true
-        default: '6.1'
+        default: '5.15'
       KERNEL_NAME:
         description: "修改内核名称"
         required: true
-        default: '-android14-11-o-g1132d864665d'
+        default: '-android13-8-0-01120-g3337bebe8205'
       kernelsu_variant:
         description: "选择 KSU"
         required: true
@@ -129,48 +129,36 @@ jobs:
           export KSU_VERSION=$KSU_VERSION
           sed -i "s/DKSU_VERSION=16/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
           
-      - name: Apply SUSFS Patches SukiSU
-        if: ${{ github.event.inputs.SUSFS_ENABLED == 'true' }}
+      - name: Set up susfs
         run: |
-          cd kernel_workspace
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}
-          git clone https://github.com/ExmikoN/SukiSU_patch.git
-          cd kernel_platform
+           cd kernel_workspace
+           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}
+           git clone https://github.com/ExmikoN/SukiSU_patch.git
 
-          # Copy SUSFS patches
-          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
-          cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
-          cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+           cd kernel_platform        
+           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch ./common/
+           cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
+           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+           #lz4k
+           cp -r ../SukiSU_patch/other/lz4k/include/linux/* ./common/include/linux
+           cp -r ../SukiSU_patch/other/lz4k/lib/* ./common/lib
+           cp -r ../SukiSU_patch/other/lz4k/crypto/* ./common/crypto
+           # Apply patches
+           cd ./common
 
-          #lz4k
-          #cp -r ../SukiSU_patch/other/lz4k/include/linux/* ./common/include/linux
-          #cp -r ../SukiSU_patch/other/lz4k/lib/* ./common/lib
-          #cp -r ../SukiSU_patch/other/lz4k/crypto/* ./common/crypto
-          
-          echo "正在给内核打susfs补丁"
-          cd ./common
-          patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || true
-          echo "完成"
-          
-      - name: Apply Hide Stuff Patches
-        if: ${{ github.event.inputs.SUSFS_ENABLED == 'true' }}
-        run: |
-          cd kernel_workspace/kernel_platform/common
-          #cp ../../SukiSU_patch/69_hide_stuff.patch ./
-          #echo "正在打隐藏应用补丁"
-          #patch -p1 -F 3 < 69_hide_stuff.patch
-         
-      - name: Apply New Hooks Patches
-        if: ${{ github.event.inputs.VFS_patch_ENABLED == 'enable' }}
+           sed -i 's/-32,12 +32,38/-32,11 +32,37/g' 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch
+           sed -i '/#include <trace\/hooks\/fs.h>/d' 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch
+
+           patch -p1 < 50_add_susfs_in_gki-${{ github.event.inputs.ANDROID_VERSION }}-${{ github.event.inputs.KERNEL_VERSION }}.patch || true
+           cp ../../SukiSU_patch/hooks/syscall_hooks.patch ./
+           patch -p1 -F 3 < syscall_hooks.patch
+           echo "完成"
+
+      - name: Apply lz4kd Patches
         run: |
           cd kernel_workspace/kernel_platform/common
-          cp ../../SukiSU_patch/hooks/syscall_hooks.patch ./
-          echo "正在打vfs补丁"
-          patch -p1 -F 3 < syscall_hooks.patch
-          echo "完成"
-
-          #  cp ../../SukiSU_patch/other/lz4k_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch ./
-          #  patch -p1 -F 3 < lz4kd.patch || true
+          cp ../../SukiSU_patch/other/lz4k_patch/${{ github.event.inputs.KERNEL_VERSION }}/lz4kd.patch ./
+          patch -p1 -F 3 < lz4kd.patch || true
 
       - name: Add SUSFS Configuration Settings
         run: |
@@ -206,6 +194,7 @@ jobs:
           echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_CRYPTO_LZ4KD=y" >> ./common/arch/arm64/configs/gki_defconfig
 
           #if [ "${{ github.event.inputs.KERNEL_VERSION }}" = "5.10" ]; then
           #  echo "CONFIG_ZSMALLOC=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -247,7 +236,7 @@ jobs:
       - name: Build kernel
         run: |
          cd kernel_workspace/kernel_platform
-         tools/bazel run --config=fast --config=stamp --lto=thin //common:kernel_aarch64_dist -- --dist_dir=dist
+         tools/bazel run --config=fast --config=local --lto=thin //common:kernel_aarch64_dist -- --dist_dir=dist
          
       - name: Generate Kernel lmages
         run: |
@@ -276,20 +265,20 @@ jobs:
       - name: 创建压缩包（保留 AnyKernel3 文件夹结构）
         run: |
           cd kernel_workspace/kernel_platform/dist
-          cd AnyKernel3-no_kpm && zip -r ../AnyKernel3-no_kpm_${{ env.KSUVER }}_oneplus12.zip . && cd ..
-          cd AnyKernel3-kpm && zip -r ../AnyKernel3-kpm_${{ env.KSUVER }}_oneplus12.zip . && cd ..
+          cd AnyKernel3-no_kpm && zip -r ../AnyKernel3-no_kpm_${{ env.KSUVER }}_ace2Pro.zip . && cd ..
+          cd AnyKernel3-kpm && zip -r ../AnyKernel3-kpm_${{ env.KSUVER }}_ace2Pro.zip . && cd ..
 
 
       - name: 创建并上传 Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: oneplus12
-          name: Build for oneplus12
+          tag_name: ace2Pro
+          name: Build for ace2Pro
           body: sukisu，带kpm，带lz4kd
           draft: false
           prerelease: false
           files: |
-            kernel_workspace/kernel_platform/dist/AnyKernel3-no_kpm_${{ env.KSUVER }}_oneplus12.zip
-            kernel_workspace/kernel_platform/dist/AnyKernel3-kpm_${{ env.KSUVER }}_oneplus12.zip
+            kernel_workspace/kernel_platform/dist/AnyKernel3-no_kpm_${{ env.KSUVER }}_ace2Pro.zip
+            kernel_workspace/kernel_platform/dist/AnyKernel3-kpm_${{ env.KSUVER }}_ace2Pro.zip
         env:
           GITHUB_TOKEN: ${{ secrets.TOKEN }}
